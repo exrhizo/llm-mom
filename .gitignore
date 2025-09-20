@@ -1,0 +1,5 @@
+.env
+
+ai_code_notes/.*
+
+.venv

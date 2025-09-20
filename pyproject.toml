@@ -1,0 +1,50 @@
+[project]
+name = "llm-mom"
+version = "0.1.0"
+description = "MCP server + tmux watchers that keep your code honest."
+requires-python = ">=3.12"
+readme = "README.md"
+authors = [{ name = "Alex / exrhizo" }]
+dependencies = [
+  "pydantic>=2.7",
+  "pydantic-settings>=2.4",
+  "pydantic-ai>=0.0.16",
+  "pydantic-ai-slim[openai]>=0.0.16",
+  "mcp[cli]>=1.1.0",
+  "libtmux>=0.26.0",
+]
+
+[project.scripts]
+mom = "mom.run:main"
+
+[tool.uv]
+dev-dependencies = [
+  "ruff>=0.5.0",
+  "pyright>=1.1.380",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["mom/tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "SIM", "RUF"]
+ignore = ["E501", "RUF002", "RUF003", "SIM117"]
+
+[tool.pyright]
+venvPath = "."
+venv      = ".venv"
+useLibraryCodeForTypes = true
+typeCheckingMode = "strict"
+pythonVersion = "3.12"
+reportUnusedFunction = false
+reportUnknownVariableType = "warning"
+reportUnknownMemberType  = "none"
+reportUnknownLambdaType = "none"
+exclude = [".venv"]
