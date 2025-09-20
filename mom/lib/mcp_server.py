@@ -1,66 +1,52 @@
 
 from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.session import ServerSession
-from pydantic import BaseModel
 
 from mom.config import c_env
-from mom.lib.llm import NextStep, make_agent, make_assessor
+from mom.lib.llm import make_accountability_agent
 from mom.lib.mom import Mom
-from mom.lib.tmuxctl import TmuxCtl
-
-
-class WatchAck(BaseModel):
-    ok: bool
-    mode: str
-    attach_cmd: str
 
 
 mcp = FastMCP("llm-mom")
 
-_tmux = TmuxCtl(session_name=c_env.TMUX_SESSION, window_name=c_env.TMUX_WINDOW)
-_agent = make_agent(c_env.MODEL)
-_assessor = make_assessor(c_env.ASSESS_MODEL)
-_mom = Mom(_tmux, _agent, _assessor)
-
+_agent = make_accountability_agent(c_env.MODEL)
+_mom = Mom(_agent)
 
 @mcp.tool()
-def watch_me(ctx: Context[ServerSession, None], tmux_window: str, strategy_plan: str) -> WatchAck:
+def attach(
+    ctx: Context[ServerSession, None],
+    pane_id: str,
+    meta_goal: str,
+    wait_cmd: str | None = None,
+) -> str:
     """
-    Tell mom to watch pane `tmux_window` using `strategy_plan`.
+    Get support from mom in achieving a long running task.
+     - pane_id is `tmux display-message -p '#{pane_id}'`
+     - meta_goal is the high level success criteria, and goal statement.
+     - wait_cmd is an optional bash command that is used to wait for feedback from the world.
     """
-    _mom.set_active_for_client(ctx.client_id, tmux_window)
-    mode = _mom.watch_me(tmux_window, strategy_plan)
-    return WatchAck(ok=True, mode=mode, attach_cmd=_mom.attach_cmd)
-
-
-@mcp.tool()
-def pause(ctx: Context[ServerSession, None], tmux_window: str) -> NextStep:
-    """
-    Pause the watcher and synthesize the next injection prompt.
-    """
-    _mom.set_active_for_client(ctx.client_id, tmux_window)
-    return _mom.pause(tmux_window)
-
+    client_id = ctx.client_id
+    assert client_id, "client_id is required"
+    return _mom.attach(client_id, pane_id, meta_goal, wait_cmd)
 
 @mcp.tool()
-def clear(ctx: Context[ServerSession, None], tmux_window: str) -> str:
+def clear(ctx: Context[ServerSession, None]) -> str:
     """
-    Stop watching the pane (kill watcher thread).
+    Reset state.
     """
-    _mom.set_active_for_client(ctx.client_id, tmux_window)
-    return _mom.clear(tmux_window)
+    client_id = ctx.client_id
+    assert client_id, "client_id is required"
+    return _mom.clear(client_id)
 
 
 @mcp.tool()
 def look_ma(
-    status_report: str,
-    tmux_window: str | None = None,
-    bash_wait: str | None = None,
-    ctx: Context[ServerSession, None] | None = None
+    ctx: Context[ServerSession, None],
+    status_report: str
 ) -> str:
     """
-    Add a terse status report to mom's context for the active watcher.
-    Optionally run a bash command after the wait period.
+    Let mom know the progress towards the original goal.
     """
-    client_id = ctx.client_id if ctx else None
-    return _mom.look_ma(client_id, status_report, tmux_window, bash_wait)
+    client_id = ctx.client_id
+    assert client_id, "client_id is required"
+    return _mom.look_ma(client_id, status_report)

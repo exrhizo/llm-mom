@@ -14,13 +14,8 @@ look_ma(status_report, tmux_window=None, bash_wait=None, ctx=None)
 clear(tmux_window, ctx)
 ```
 
-Your test calls `watch_me(mock_ctx, "test_window", "test plan")` etc. Flip to keyword args or the correct positional order.
-
 3. **Env fixture won’t always take**
    `c_env` is constructed at import time. Changing `os.environ` *after* imports won’t affect it. Prefer directly monkeypatching `c_env` fields in tests.
-
-4. **Relying on `sleep` is flaky**
-   Swap raw `time.sleep(...)` waits for a tiny `wait_until` helper that polls for a predicate (e.g., “transcript contains a ‘decision’ entry”).
 
 5. **Transcript trim semantics**
    Your trimming test assumes the original **plan** entry is always retained. Make the code trim as: keep the first `plan` entry + last `MAX_TRANSCRIPT-1` recents. Otherwise that test will fail.

@@ -1,6 +1,5 @@
 from pathlib import Path
 
-from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -8,9 +7,7 @@ class CEnv(BaseSettings):
     model_config = SettingsConfigDict(env_file=Path(".env"), extra="ignore")
 
     OPENAI_API_KEY: str
-    MODEL: str = Field("openai:gpt-4o", alias="MODEL")
-    TMUX_SESSION: str = "llm-mom"
-    TMUX_WINDOW: str = "main"
+    MODEL: str = "openai:gpt-4.1-nano"
 
     POLL_SECS: float = 0.8
     TAIL_LINES: int = 160
@@ -19,7 +16,6 @@ class CEnv(BaseSettings):
     DEFAULT_WAIT_SEC: float = 10.0
     IDLE_THRESHOLD: float = 3.0
     IDLE_SPIN_POLL_SECS: float = 0.2
-    ASSESS_MODEL: str = "openai:gpt-4o"
     INJECT_PRESS_ENTER: bool = True
 
 

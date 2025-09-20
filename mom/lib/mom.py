@@ -1,50 +1,49 @@
 import subprocess
+from typing import Literal
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from queue import Empty, Queue
 
-from libtmux.pane import Pane
 from pydantic_ai import Agent
 
 from mom.config import c_env
-from mom.lib.llm import AssessOut, NextStep, build_assess_prompt, build_prompt
-from mom.lib.tmuxctl import TmuxCtl
+from mom.lib.llm import MetaDecision, build_prompt
+from mom.lib.tmux_pane import managed_pane_from_id
 
+Role = Literal["meta_goal", "wait_output", "decision", "sub_agent_status"]
 
 @dataclass
 class TranscriptEntry:
-    role: str
+    role: Role
     text: str
-    ts: float
+    ts: float = field(default_factory=time.time)
 
 
 @dataclass
 class WaitAfterReport:
-    bash_wait: str | None
+    ...
 
 
 Event = WaitAfterReport
 
 
 class Watcher(threading.Thread):
-    def __init__(self, name: str, pane: Pane, strategy_plan: str, agent: Agent[None, NextStep], assessor: Agent[None, AssessOut]):
+    def __init__(self, pane_id: str, meta_goal: str, agent: Agent[None, MetaDecision], wait_cmd: str | None = None):
         super().__init__(daemon=True)
-        self.name = name
-        self.pane = pane
-        self.strategy_plan = strategy_plan
+        self.pane = managed_pane_from_id(pane_id)
+        self.pane_id = pane_id
+        self.meta_goal = meta_goal
         self.agent = agent
-        self.assessor = assessor
+        
+        self.meta_goal: str = meta_goal
+        self.wait_cmd = wait_cmd
 
-        self.paused: bool = False
-        self._stop_event = threading.Event()
-        self.transcript: list[TranscriptEntry] = [TranscriptEntry("plan", strategy_plan, time.time())]
-        self.latest_status: str = ""
-        self.latest_injection: NextStep | None = None
+        self.transcript: list[TranscriptEntry] = [TranscriptEntry("meta_goal", meta_goal)]
 
         self.events: Queue[Event] = Queue()
-        self._last_snapshot: str = ""
-        self._last_change_ts: float = time.time()
+        self._stop_event = threading.Event()
+
 
     def run(self) -> None:
         while not self._stop_event.is_set():
@@ -53,66 +52,41 @@ class Watcher(threading.Thread):
             except Empty:
                 continue
 
-            if isinstance(ev, WaitAfterReport):
-                wait_output = self._do_wait(ev.bash_wait)
-                self.transcript.append(TranscriptEntry("wait_output", wait_output, time.time()))
+            if isinstance(ev, WaitAfterReport): # type: ignore[reportUnnecessaryIsinstance]
+                wait_output = self._do_wait(self.wait_cmd)
+                self.transcript.append(TranscriptEntry("wait_output", wait_output))
+
+                if self._stop_event.is_set():
+                    break
 
                 self._spin_until_idle()
 
-                decision = self._assess(wait_output)
-                if decision is None:
-                    self.paused = True
-                    self.transcript.append(TranscriptEntry("decision", "stop", time.time()))
+                if self._stop_event.is_set():
+                    break
+
+                decision = self._next_step(wait_output)
+                if decision.action == "continue" and not decision.command:
+                    self.transcript.append(TranscriptEntry("decision", "Missing command to continue"))
+                if decision.action == "stop":
+                    self.transcript.append(TranscriptEntry("decision", f"stop '{decision.command}'"))
                 else:
-                    self.pane.send_keys(decision, enter=c_env.INJECT_PRESS_ENTER)
-                    self.transcript.append(TranscriptEntry("injection", decision, time.time()))
-                    self.transcript.append(TranscriptEntry("decision", "continue", time.time()))
+                    self.pane.send_keys(decision.command, enter=c_env.INJECT_PRESS_ENTER)
+                    self.transcript.append(TranscriptEntry("decision", f"continue: {decision.command}"))
 
     def stop(self) -> None:
         self._stop_event.set()
-
-    def update_plan(self, strategy_plan: str) -> None:
-        self.strategy_plan = strategy_plan
-        self.transcript.append(TranscriptEntry("plan", strategy_plan, time.time()))
+    
+    def update_plan(self, meta_goal: str) -> None:
+        self.meta_goal = meta_goal
+        self.transcript.append(TranscriptEntry("meta_goal", meta_goal))
 
     def add_status(self, status_report: str) -> None:
         self.latest_status = status_report
-        self.transcript.append(TranscriptEntry("status", status_report, time.time()))
-        # Trim
-        if len(self.transcript) > c_env.MAX_TRANSCRIPT:
-            self.transcript = self.transcript[-c_env.MAX_TRANSCRIPT :]
+        self.transcript.append(TranscriptEntry("sub_agent_status", status_report))
 
-    def pause(self) -> NextStep:
-        self.paused = True
-        next_step = self._synthesize_next_step()
-        self.latest_injection = next_step
-        self.transcript.append(
-            TranscriptEntry(
-                "injection",
-                f"achieved={next_step.achieved}; {next_step.injection_prompt}",
-                time.time(),
-            )
-        )
-        if next_step.achieved:
-            # stay paused
-            pass
-        return next_step
-
-    def clear(self) -> None:
-        self.stop()
-
-    def _pane_text(self) -> str:
-        return TmuxCtl.tail(self.pane, c_env.TAIL_LINES)
-
-    def _update_idle(self) -> None:
-        snap = self._pane_text()
-        if snap != self._last_snapshot:
-            self._last_snapshot = snap
-            self._last_change_ts = time.time()
-
-    @property
-    def idle_for(self) -> float:
-        return time.time() - self._last_change_ts
+    def _next_step(self, wait_output: str) -> MetaDecision:
+        result = self.agent.run_sync(build_prompt(self.meta_goal, self.latest_status, wait_output))
+        return result.output
 
     def _do_wait(self, bash_wait: str | None) -> str:
         if bash_wait:
@@ -129,96 +103,35 @@ class Watcher(threading.Thread):
 
     def _spin_until_idle(self) -> None:
         while True:
-            self._update_idle()
-            if self.idle_for >= c_env.IDLE_THRESHOLD:
+            if self.pane.idle_for >= c_env.IDLE_THRESHOLD:
                 break
             time.sleep(c_env.IDLE_SPIN_POLL_SECS)
 
-        self.transcript.append(
-            TranscriptEntry("idle_spin", f"idle_for={self.idle_for:.2f}", time.time())
-        )
-
-    def _assess(self, wait_output: str) -> None | str:
-        transcript_tail = self._format_transcript_tail()
-        pane_tail = self._pane_text()
-        prompt = build_assess_prompt(self.strategy_plan, transcript_tail, wait_output, pane_tail)
-        result = self.assessor.run_sync(prompt)
-        assessment = result.output
-
-        if assessment.action == "stop":
-            return None
-        else:
-            return assessment.injection_prompt
-
-    def _format_transcript_tail(self) -> str:
-        entries = self.transcript[-30:]  # Last 30 entries
-        entries.reverse()  # Most recent first
-
-        formatted = []
-        for entry in entries:
-            timestamp = time.strftime("-%H:%M:%S", time.localtime(entry.ts))
-            text = entry.text[:200]  # Trim to ~200 chars
-            formatted.append(f"[{timestamp} {entry.role}] {text}")
-
-        return "\n".join(formatted)
-
-    def _synthesize_next_step(self) -> NextStep:
-        tail = TmuxCtl.tail(self.pane, c_env.TAIL_LINES)
-        prompt = build_prompt(self.strategy_plan, self.latest_status, tail)
-        result = self.agent.run_sync(prompt)
-        return result.output
-
-
 
 class Mom:
-    def __init__(self, tmux: TmuxCtl, agent: Agent[None, NextStep], assessor: Agent[None, AssessOut]):
-        self.tmux = tmux
+    def __init__(self, agent: Agent[None, MetaDecision]):
         self.agent = agent
-        self.assessor = assessor
         self.watchers: dict[str, Watcher] = {}
-        self.last_by_client: dict[str, str] = {}  # client_id -> tmux_window
 
-    def set_active_for_client(self, client_id: str | None, tmux_window: str) -> None:
-        if client_id:
-            self.last_by_client[client_id] = tmux_window
-
-    def _resolve_window(self, client_id: str | None, tmux_window: str | None) -> str:
-        if tmux_window:
-            return tmux_window
-        if client_id and client_id in self.last_by_client:
-            return self.last_by_client[client_id]
-        if self.watchers:
-            return next(iter(self.watchers.keys()))
-        raise KeyError("No watcher exists yet.")
-
-    def watch_me(self, tmux_window: str, strategy_plan: str) -> str:
-        if tmux_window in self.watchers:
-            self.watchers[tmux_window].update_plan(strategy_plan)
+    def attach(self, client_id: str, pane_id: str, meta_goal: str, wait_cmd: str | None = None) -> str:
+        if client_id in self.watchers:
+            self.watchers[client_id].update_plan(meta_goal)
             return "updated"
-        pane = self.tmux.ensure_pane(tmux_window)
-        w = Watcher(tmux_window, pane, strategy_plan, self.agent, self.assessor)
-        self.watchers[tmux_window] = w
+
+        w = Watcher(pane_id, meta_goal, self.agent, wait_cmd)
+        self.watchers[client_id] = w
         w.start()
-        return "watching"
+        return "attached"
 
-    def pause(self, tmux_window: str) -> NextStep:
-        w = self.watchers[tmux_window]
-        return w.pause()
-
-    def clear(self, tmux_window: str) -> str:
-        w = self.watchers.pop(tmux_window, None)
+    def clear(self, client_id: str) -> str:
+        w = self.watchers.pop(client_id, None)
         if not w:
             return "noop"
-        w.clear()
+        w.stop()
         return "cleared"
 
-    def look_ma(self, client_id: str | None, status_report: str, tmux_window: str | None, bash_wait: str | None = None) -> str:
-        key = self._resolve_window(client_id, tmux_window)
-        watcher = self.watchers[key]
+    def look_ma(self, client_id: str, status_report: str) -> str:
+        watcher = self.watchers[client_id]
         watcher.add_status(status_report)
-        watcher.events.put(WaitAfterReport(bash_wait))
-        return "recorded+waiting"
-
-    @property
-    def attach_cmd(self) -> str:
-        return self.tmux.attach_cmd
+        watcher.events.put(WaitAfterReport())
+        return "validated"
