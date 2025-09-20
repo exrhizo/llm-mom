@@ -1,11 +1,10 @@
-from typing import Optional
 
 from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.session import ServerSession
 from pydantic import BaseModel
 
 from mom.config import c_env
-from mom.lib.llm import NextStep, make_agent
+from mom.lib.llm import NextStep, make_agent, make_assessor
 from mom.lib.mom import Mom
 from mom.lib.tmuxctl import TmuxCtl
 
@@ -20,7 +19,8 @@ mcp = FastMCP("llm-mom")
 
 _tmux = TmuxCtl(session_name=c_env.TMUX_SESSION, window_name=c_env.TMUX_WINDOW)
 _agent = make_agent(c_env.MODEL)
-_mom = Mom(_tmux, _agent)
+_assessor = make_assessor(c_env.ASSESS_MODEL)
+_mom = Mom(_tmux, _agent, _assessor)
 
 
 @mcp.tool()
@@ -52,9 +52,15 @@ def clear(ctx: Context[ServerSession, None], tmux_window: str) -> str:
 
 
 @mcp.tool()
-def look_ma(ctx: Context[ServerSession, None], status_report: str, tmux_window: Optional[str] = None) -> str:
+def look_ma(
+    status_report: str,
+    tmux_window: str | None = None,
+    bash_wait: str | None = None,
+    ctx: Context[ServerSession, None] | None = None
+) -> str:
     """
     Add a terse status report to mom's context for the active watcher.
+    Optionally run a bash command after the wait period.
     """
     client_id = ctx.client_id if ctx else None
-    return _mom.look_ma(client_id, status_report, tmux_window)
+    return _mom.look_ma(client_id, status_report, tmux_window, bash_wait)

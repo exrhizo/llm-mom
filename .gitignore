@@ -3,3 +3,7 @@
 ai_code_notes/.*
 
 .venv
+
+
+*.egg-info
+__pycache__

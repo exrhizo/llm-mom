@@ -17,10 +17,14 @@ dependencies = [
 [project.scripts]
 mom = "mom.run:main"
 
+[tool.setuptools]
+packages = ["mom"]
+
 [tool.uv]
 dev-dependencies = [
   "ruff>=0.5.0",
   "pyright>=1.1.380",
+  "pytest>=8.4.2",
 ]
 
 [tool.pytest.ini_options]
