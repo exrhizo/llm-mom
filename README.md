@@ -15,7 +15,7 @@ Install your project as usual, then:
 
 ```bash
 uv sync
-uv run python -m mom up
+uv run mom up
 # started pid 12345 -> logs/mom.log
 # claude mcp add mom --url http://127.0.0.1:6541/mcp
 ```

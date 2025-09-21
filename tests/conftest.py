@@ -1,11 +1,11 @@
 import os
-from unittest.mock import MagicMock, patch
 from collections.abc import AsyncGenerator
+from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
-from httpx import ASGITransport
 from asgi_lifespan import LifespanManager
+from httpx import ASGITransport
 from starlette.applications import Starlette
 
 # Set a fake OpenAI API key for testing to avoid import errors
@@ -22,7 +22,7 @@ def mock_openai_requirements():
 
 
 @pytest.fixture(autouse=True)
-def fast_timers(monkeypatch):
+def fast_timers(monkeypatch: pytest.MonkeyPatch):
     """Shrink watcher timings globally for tests"""
     from types import SimpleNamespace
     monkeypatch.setattr('mom.lib.mom.c_env', SimpleNamespace(
@@ -54,7 +54,7 @@ def clean_mcp_watchers():
     """Ensure global _mom is drained between tests that touch the HTTP app"""
     yield
     try:
-        from mom.lib.mcp_server import _mom
+        from mom.lib.mcp_server import _mom  # type: ignore[reportPrivateUsage]
         for sid in list(_mom.watchers):
             _mom.clear(sid)
     except Exception:

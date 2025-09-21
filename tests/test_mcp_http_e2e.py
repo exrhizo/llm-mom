@@ -1,14 +1,13 @@
 import asyncio
 import time
 from queue import Queue
+from typing import Any
 from unittest.mock import patch
 
 import httpx
 import pytest
-from httpx import ASGITransport
 
 from mom.lib.llm import MetaDecision
-from mom.lib.mcp_server import mcp
 
 
 # Helper functions for MCP handshake and tool calls
@@ -45,7 +44,7 @@ async def _initialize(client: httpx.AsyncClient) -> dict[str, str]:
     assert r2.status_code == 202  # Notifications return 202 Accepted
     return {"Mcp-Session-Id": sid}
 
-def _parse_sse_response(response: httpx.Response) -> dict:
+def _parse_sse_response(response: httpx.Response) -> dict[str, Any]:
     """Parse Server-Sent Events response to extract JSON data"""
     if response.headers.get("content-type") == "text/event-stream":
         lines = response.text.strip().split('\n')
@@ -95,11 +94,11 @@ class FakePane:
 
 class FakeAgent:
     def __init__(self, decisions: list[MetaDecision]):
-        self.decisions = Queue()
+        self.decisions = Queue[MetaDecision]()
         for decision in decisions:
             self.decisions.put(decision)
 
-    def run_sync(self, prompt: str) -> object:
+    def run_sync(self, prompt: str) -> Any:
         class Result:
             def __init__(self, output: MetaDecision):
                 self.output = output
@@ -134,7 +133,7 @@ def fake_agent_echo_then_stop():
 
 
 @pytest.mark.anyio(backends=["asyncio"])
-async def test_single_session_injects_then_stops(client, fake_pane):
+async def test_single_session_injects_then_stops(client: httpx.AsyncClient, fake_pane: Any) -> None:
     """Test 1: single session injects then stops"""
     fake_agent = FakeAgent([
         MetaDecision(action="continue", command="make build"),
@@ -170,7 +169,7 @@ async def test_single_session_injects_then_stops(client, fake_pane):
         # wait for watcher to stop
         start = time.time()
         while time.time() - start < 0.5:
-            from mom.lib.mcp_server import _mom
+            from mom.lib.mcp_server import _mom  # type: ignore[reportPrivateUsage]
             if "test-session-id" not in _mom.watchers or not _mom.watchers["test-session-id"].is_alive():
                 break
             await asyncio.sleep(0.01)
@@ -183,7 +182,7 @@ async def test_single_session_injects_then_stops(client, fake_pane):
 
 
 @pytest.mark.anyio(backends=["asyncio"])
-async def test_session_isolation(client):
+async def test_session_isolation(client: httpx.AsyncClient) -> None:
     """Test 2: session isolation"""
     fake_pane_s1 = FakePane()
     fake_pane_s2 = FakePane()
@@ -205,22 +204,22 @@ async def test_session_isolation(client):
             raise ValueError(f"Unknown pane_id: {pane_id}")
 
     call_count = [0]
-    def mock_session_id(ctx):
+    def mock_session_id(ctx: Any) -> str:
         call_count[0] += 1
         return "s1" if call_count[0] <= 2 else "s2"
 
     with patch('mom.lib.mom.managed_pane_from_id', side_effect=mock_pane_from_id), \
          patch('mom.lib.mcp_server._get_session_id', side_effect=mock_session_id):
         # Patch the mom instance to use different agents per session
-        from mom.lib.mcp_server import _mom
+        from mom.lib.mcp_server import _mom  # type: ignore[reportPrivateUsage]
         original_attach = _mom.attach
 
         def patched_attach(client_id: str, pane_id: str, meta_goal: str, wait_cmd: str | None = None):
             # Use different agent based on client_id
             if client_id == "s1":
-                _mom.agent = fake_agent_s1
+                _mom.agent = fake_agent_s1  # type: ignore[reportAttributeAccessIssue]
             else:
-                _mom.agent = fake_agent_s2
+                _mom.agent = fake_agent_s2  # type: ignore[reportAttributeAccessIssue]
             return original_attach(client_id, pane_id, meta_goal, wait_cmd)
 
         with patch.object(_mom, 'attach', side_effect=patched_attach):

@@ -3,6 +3,8 @@ from typing import Literal
 
 from pydantic import BaseModel
 from pydantic_ai import Agent
+from pydantic_ai.models.openai import OpenAIChatModel
+from pydantic_ai.providers.openai import OpenAIProvider
 
 from mom.config import c_env
 
@@ -35,7 +37,8 @@ Rules:
 - XML is used to delineate prompts vs data.
 """
 def make_accountability_agent(model_name: str) -> Agent[None, MetaDecision]:
-    return Agent(model_name, output_type=MetaDecision, instructions=INSTRUCTIONS)
+    model = OpenAIChatModel(model_name, provider=OpenAIProvider(api_key=c_env.OPENAI_API_KEY))
+    return Agent(model, output_type=MetaDecision, instructions=INSTRUCTIONS)
 
 
 def build_prompt(high_level_goal: str, transcript: str, wait_output: str) -> str:

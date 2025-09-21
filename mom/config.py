@@ -4,7 +4,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class CEnv(BaseSettings):
-    model_config = SettingsConfigDict(env_file=Path(".env"), extra="ignore")
+    model_config = SettingsConfigDict(env_file=Path(__file__).parent.parent / ".env", extra="ignore")
 
     MOM_PORT: int = 6541
     MOM_LOG_FILE: Path = Path("logs/mom.log")

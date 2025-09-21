@@ -1,5 +1,6 @@
 import time
 from queue import Queue
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -34,11 +35,11 @@ class FakePane:
 
 class FakeAgent:
     def __init__(self, decisions: list[MetaDecision]):
-        self.decisions = Queue()
+        self.decisions = Queue[MetaDecision]()
         for decision in decisions:
             self.decisions.put(decision)
 
-    def run_sync(self, prompt: str) -> object:
+    def run_sync(self, prompt: str) -> Any:
         class Result:
             def __init__(self, output: MetaDecision):
                 self.output = output
@@ -47,13 +48,13 @@ class FakeAgent:
 
 
 @pytest.fixture
-def fake_pane():
+def fake_pane() -> FakePane:
     return FakePane()
 
 
 @pytest.fixture
-def fake_subprocess_run():
-    def mock_run(*args, **kwargs):
+def fake_subprocess_run() -> Any:
+    def mock_run(*args: Any, **kwargs: Any) -> Any:
         class Result:
             stdout = "ok\n"
             stderr = ""
@@ -61,7 +62,7 @@ def fake_subprocess_run():
     return mock_run
 
 
-def test_continue_path_injects_once(fake_pane, fake_subprocess_run):
+def test_continue_path_injects_once(fake_pane: FakePane, fake_subprocess_run: Any) -> None:
     """Test A: continue path injects once"""
     fake_agent = FakeAgent([
         MetaDecision(action="continue", command="pytest -q"),
@@ -71,7 +72,7 @@ def test_continue_path_injects_once(fake_pane, fake_subprocess_run):
     with patch('mom.lib.mom.managed_pane_from_id', return_value=fake_pane), \
          patch('subprocess.run', side_effect=fake_subprocess_run):
 
-        mom = Mom(fake_agent)
+        mom = Mom(fake_agent)  # type: ignore[reportArgumentType]
 
         # Attach
         result = mom.attach("sA", "%7", "pass tests", "echo ok")
@@ -98,7 +99,7 @@ def test_continue_path_injects_once(fake_pane, fake_subprocess_run):
         assert result == "cleared"
 
 
-def test_empty_command_doesnt_inject(fake_pane, fake_subprocess_run):
+def test_empty_command_doesnt_inject(fake_pane: FakePane, fake_subprocess_run: Any) -> None:
     """Test B: empty command doesn't inject"""
     fake_agent = FakeAgent([
         MetaDecision(action="continue", command=""),
@@ -108,7 +109,7 @@ def test_empty_command_doesnt_inject(fake_pane, fake_subprocess_run):
     with patch('mom.lib.mom.managed_pane_from_id', return_value=fake_pane), \
          patch('subprocess.run', side_effect=fake_subprocess_run):
 
-        mom = Mom(fake_agent)
+        mom = Mom(fake_agent)  # type: ignore[reportArgumentType]
 
         # Attach
         result = mom.attach("sB", "%8", "some goal", "echo ok")
@@ -126,11 +127,11 @@ def test_empty_command_doesnt_inject(fake_pane, fake_subprocess_run):
 
         # Check that the transcript contains the missing command message
         watcher = mom.watchers["sB"]
-        transcript_text = watcher._render_transcript()
+        transcript_text = watcher._render_transcript()  # type: ignore[reportPrivateUsage]
         assert "Missing command to continue" in transcript_text
 
 
-def test_clear_semantics(fake_pane, fake_subprocess_run):
+def test_clear_semantics(fake_pane: FakePane, fake_subprocess_run: Any) -> None:
     """Test C: clear semantics"""
     fake_agent = FakeAgent([
         MetaDecision(action="continue", command="echo test"),
@@ -140,7 +141,7 @@ def test_clear_semantics(fake_pane, fake_subprocess_run):
     with patch('mom.lib.mom.managed_pane_from_id', return_value=fake_pane), \
          patch('subprocess.run', side_effect=fake_subprocess_run):
 
-        mom = Mom(fake_agent)
+        mom = Mom(fake_agent)  # type: ignore[reportArgumentType]
 
         # Attach
         result = mom.attach("sC", "%9", "test goal", "echo ok")
@@ -155,17 +156,17 @@ def test_clear_semantics(fake_pane, fake_subprocess_run):
         assert result == "noop"
 
 
-def test_agent_consumption_validation(fake_pane, fake_subprocess_run):
+def test_agent_consumption_validation(fake_pane: FakePane, fake_subprocess_run: Any) -> None:
     """Additional test to ensure transcript is consumed by agent"""
-    decisions_called = []
+    decisions_called: list[str] = []
 
     class TrackingFakeAgent:
         def __init__(self, decisions: list[MetaDecision]):
-            self.decisions = Queue()
+            self.decisions = Queue[MetaDecision]()
             for decision in decisions:
                 self.decisions.put(decision)
 
-        def run_sync(self, prompt: str) -> object:
+        def run_sync(self, prompt: str) -> Any:
             decisions_called.append(prompt)
 
             class Result:
@@ -182,7 +183,7 @@ def test_agent_consumption_validation(fake_pane, fake_subprocess_run):
     with patch('mom.lib.mom.managed_pane_from_id', return_value=fake_pane), \
          patch('subprocess.run', side_effect=fake_subprocess_run):
 
-        mom = Mom(fake_agent)
+        mom = Mom(fake_agent)  # type: ignore[reportArgumentType]
 
         # Attach
         mom.attach("sD", "%10", "run tests", "echo ready")
@@ -203,23 +204,23 @@ def test_agent_consumption_validation(fake_pane, fake_subprocess_run):
         assert "<wait_output>" in prompt
 
 
-def test_attach_twice_updates_plan(fake_pane, fake_subprocess_run):
+def test_attach_twice_updates_plan(fake_pane: FakePane, fake_subprocess_run: Any) -> None:
     """Test attach idempotency returns 'updated'"""
     fake_agent = FakeAgent([
         MetaDecision(action="stop", command="")  # no injection
     ])
     with patch('mom.lib.mom.managed_pane_from_id', return_value=fake_pane), \
          patch('subprocess.run', side_effect=fake_subprocess_run):
-        mom = Mom(fake_agent)
+        mom = Mom(fake_agent)  # type: ignore[reportArgumentType]
         assert mom.attach("sZ", "%3", "alpha", "echo ok") == "attached"
         assert mom.attach("sZ", "%3", "beta", "echo ok") == "updated"
         # ensure transcript records new goal
-        trn = mom.watchers["sZ"]._render_transcript()
+        trn = mom.watchers["sZ"]._render_transcript()  # type: ignore[reportPrivateUsage]
         assert "meta_goal: beta" in trn
         mom.clear("sZ")
 
 
-def test_wait_cmd_none_uses_sleep(fake_pane, monkeypatch):
+def test_wait_cmd_none_uses_sleep(fake_pane: FakePane, monkeypatch: pytest.MonkeyPatch) -> None:
     """Test wait_cmd=None path (no subprocess, sleep branch)"""
     fake_agent = FakeAgent([MetaDecision(action="stop", command="")])
 
@@ -229,10 +230,10 @@ def test_wait_cmd_none_uses_sleep(fake_pane, monkeypatch):
     })())
 
     with patch('mom.lib.mom.managed_pane_from_id', return_value=fake_pane):
-        mom = Mom(fake_agent)
+        mom = Mom(fake_agent)  # type: ignore[reportArgumentType]
         mom.attach("sE", "%4", "zzz", None)
         mom.look_ma("sE", "poke")
         time.sleep(0.05)
-        trn = mom.watchers["sE"]._render_transcript()
+        trn = mom.watchers["sE"]._render_transcript()  # type: ignore[reportPrivateUsage]
         assert "[sleep] " in trn
         mom.clear("sE")
