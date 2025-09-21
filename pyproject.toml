@@ -15,7 +15,8 @@ dependencies = [
 ]
 
 [project.scripts]
-mom = "mom.run:main"
+mom = "mom.cli:main"
+mom-http = "mom.run:main"
 
 [tool.setuptools]
 packages = ["mom"]

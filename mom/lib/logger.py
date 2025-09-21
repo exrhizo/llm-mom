@@ -17,6 +17,12 @@ def _build_handler(log_path: Path, fmt: str) -> logging.Handler:
     return h
 
 
+def truncate_log(path: Path | None = None) -> None:
+    p = path or c_env.MOM_LOG_FILE
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text("")  # clobber
+
+
 def get_logger(
     name: str,
     *,

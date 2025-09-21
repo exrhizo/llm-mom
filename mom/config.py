@@ -9,6 +9,7 @@ class CEnv(BaseSettings):
     MOM_PORT: int = 6541
     MOM_LOG_FILE: Path = Path("logs/mom.log")
     MOM_LOG_LEVEL: str = "INFO"
+    MOM_HEARTBEAT_MINS: float = 5.0
 
     OPENAI_API_KEY: str
     MODEL: str = "openai:gpt-4.1-nano"
