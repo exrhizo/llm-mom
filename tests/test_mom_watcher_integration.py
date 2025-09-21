@@ -201,3 +201,38 @@ def test_agent_consumption_validation(fake_pane, fake_subprocess_run):
         assert "<high_level_goal>" in prompt  # XML structure
         assert "<transcript>" in prompt
         assert "<wait_output>" in prompt
+
+
+def test_attach_twice_updates_plan(fake_pane, fake_subprocess_run):
+    """Test attach idempotency returns 'updated'"""
+    fake_agent = FakeAgent([
+        MetaDecision(action="stop", command="")  # no injection
+    ])
+    with patch('mom.lib.mom.managed_pane_from_id', return_value=fake_pane), \
+         patch('subprocess.run', side_effect=fake_subprocess_run):
+        mom = Mom(fake_agent)
+        assert mom.attach("sZ", "%3", "alpha", "echo ok") == "attached"
+        assert mom.attach("sZ", "%3", "beta", "echo ok") == "updated"
+        # ensure transcript records new goal
+        trn = mom.watchers["sZ"]._render_transcript()
+        assert "meta_goal: beta" in trn
+        mom.clear("sZ")
+
+
+def test_wait_cmd_none_uses_sleep(fake_pane, monkeypatch):
+    """Test wait_cmd=None path (no subprocess, sleep branch)"""
+    fake_agent = FakeAgent([MetaDecision(action="stop", command="")])
+
+    # make sleeps instant & idle immediate
+    monkeypatch.setattr('mom.lib.mom.c_env', type('E', (), {
+        'POLL_SECS': 0.01, 'DEFAULT_WAIT_SEC': 0.01, 'IDLE_THRESHOLD': 0.0, 'IDLE_SPIN_POLL_SECS': 0.001
+    })())
+
+    with patch('mom.lib.mom.managed_pane_from_id', return_value=fake_pane):
+        mom = Mom(fake_agent)
+        mom.attach("sE", "%4", "zzz", None)
+        mom.look_ma("sE", "poke")
+        time.sleep(0.05)
+        trn = mom.watchers["sE"]._render_transcript()
+        assert "[sleep] " in trn
+        mom.clear("sE")

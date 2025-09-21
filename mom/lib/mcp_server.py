@@ -48,8 +48,10 @@ def look_ma(
 
 def _get_session_id(ctx: Context[ServerSession, None]) -> str:
     meta = ctx.request_context.meta
-    assert meta is not None, "meta is required"
+    if meta is None:
+        raise ValueError("meta is required")
     d: dict[str, Any] = meta.model_dump(exclude_none=True)  # pydantic v2
     sid = d.get("mcpSessionId")
-    assert isinstance(sid, str) and sid, "session_id is required"
+    if not isinstance(sid, str) or not sid:
+        raise ValueError("session_id is required")
     return sid
