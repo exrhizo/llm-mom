@@ -1,9 +1,9 @@
 import subprocess
-from typing import Literal
 import threading
 import time
 from dataclasses import dataclass, field
 from queue import Empty, Queue
+from typing import Literal
 
 from pydantic_ai import Agent
 
@@ -75,7 +75,7 @@ class Watcher(threading.Thread):
 
     def stop(self) -> None:
         self._stop_event.set()
-    
+
     def update_plan(self, meta_goal: str) -> None:
         self.meta_goal = meta_goal
         self.transcript.append(TranscriptEntry("meta_goal", meta_goal))

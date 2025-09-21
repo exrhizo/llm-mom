@@ -1,10 +1,10 @@
+import re
 import time
 from re import Pattern
-import re
 
 import libtmux
 from libtmux.pane import Pane
-from libtmux.window import Window
+
 from mom.lib.logger import get_logger
 
 log = get_logger(__name__)

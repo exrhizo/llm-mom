@@ -7,3 +7,5 @@ ai_code_notes/.*
 
 *.egg-info
 __pycache__
+
+logs

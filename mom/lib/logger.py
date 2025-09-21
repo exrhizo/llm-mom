@@ -4,7 +4,6 @@ from pathlib import Path
 
 from mom.config import c_env
 
-
 _DEFAULT_FMT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 _MAX_BYTES = 5 * 1024 * 1024  # 5 MiB
 _BACKUPS = 3

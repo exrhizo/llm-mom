@@ -1,8 +1,9 @@
-from starlette.middleware.cors import CORSMiddleware
 import uvicorn
+from starlette.middleware.cors import CORSMiddleware
 
-from mom.lib.mcp_server import mcp  # your FastMCP instance
 from mom.config import c_env
+from mom.lib.mcp_server import mcp  # your FastMCP instance
+
 
 def main() -> None:
     # Build the ASGI app for Streamable HTTP
