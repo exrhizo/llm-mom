@@ -1,4 +1,4 @@
-
+from typing import Any
 from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.session import ServerSession
 
@@ -25,18 +25,14 @@ def attach(
      - meta_goal is the high level success criteria, and goal statement.
      - wait_cmd is an optional bash command that is used to wait for feedback from the world.
     """
-    client_id = ctx.client_id
-    assert client_id, "client_id is required"
-    return _mom.attach(client_id, pane_id, meta_goal, wait_cmd)
+    return _mom.attach(_get_session_id(ctx), pane_id, meta_goal, wait_cmd)
 
 @mcp.tool()
 def clear(ctx: Context[ServerSession, None]) -> str:
     """
     Reset state.
     """
-    client_id = ctx.client_id
-    assert client_id, "client_id is required"
-    return _mom.clear(client_id)
+    return _mom.clear(_get_session_id(ctx))
 
 
 @mcp.tool()
@@ -47,6 +43,13 @@ def look_ma(
     """
     Let mom know the progress towards the original goal.
     """
-    client_id = ctx.client_id
-    assert client_id, "client_id is required"
-    return _mom.look_ma(client_id, status_report)
+    return _mom.look_ma(_get_session_id(ctx), status_report)
+
+
+def _get_session_id(ctx: Context[ServerSession, None]) -> str:
+    meta = ctx.request_context.meta
+    assert meta is not None, "meta is required"
+    d: dict[str, Any] = meta.model_dump(exclude_none=True)  # pydantic v2
+    sid = d.get("mcpSessionId")
+    assert isinstance(sid, str) and sid, "session_id is required"
+    return sid

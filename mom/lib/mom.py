@@ -35,9 +35,8 @@ class Watcher(threading.Thread):
         self.pane_id = pane_id
         self.meta_goal = meta_goal
         self.agent = agent
-        
-        self.meta_goal: str = meta_goal
         self.wait_cmd = wait_cmd
+        self.latest_status: str = ""
 
         self.transcript: list[TranscriptEntry] = [TranscriptEntry("meta_goal", meta_goal)]
 
@@ -65,13 +64,14 @@ class Watcher(threading.Thread):
                     break
 
                 decision = self._next_step(wait_output)
-                if decision.action == "continue" and not decision.command:
-                    self.transcript.append(TranscriptEntry("decision", "Missing command to continue"))
-                if decision.action == "stop":
-                    self.transcript.append(TranscriptEntry("decision", f"stop '{decision.command}'"))
-                else:
-                    self.pane.send_keys(decision.command, enter=c_env.INJECT_PRESS_ENTER)
+                if decision.action == "continue":
+                    if not decision.command:
+                        self.transcript.append(TranscriptEntry("decision", "Missing command to continue"))
+                        continue
+                    self.pane.send_keys(decision.command, enter=True)
                     self.transcript.append(TranscriptEntry("decision", f"continue: {decision.command}"))
+                elif decision.action == "stop":
+                    self.transcript.append(TranscriptEntry("decision", f"stop '{decision.command}'"))
 
     def stop(self) -> None:
         self._stop_event.set()
@@ -84,8 +84,13 @@ class Watcher(threading.Thread):
         self.latest_status = status_report
         self.transcript.append(TranscriptEntry("sub_agent_status", status_report))
 
+    def _render_transcript(self) -> str:
+        rows = [f"[{time.strftime('%H:%M:%S', time.localtime(e.ts))}] {e.role}: {e.text}" for e in self.transcript]
+        return "\n".join(rows)
+
     def _next_step(self, wait_output: str) -> MetaDecision:
-        result = self.agent.run_sync(build_prompt(self.meta_goal, self.latest_status, wait_output))
+        trn = self._render_transcript()
+        result = self.agent.run_sync(build_prompt(self.meta_goal, trn, wait_output))
         return result.output
 
     def _do_wait(self, bash_wait: str | None) -> str:

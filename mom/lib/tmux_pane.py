@@ -86,7 +86,8 @@ def managed_pane_from_id(pane_id: str, init_regex: str | Pattern[str] | None = N
     server = libtmux.Server()
     # libtmux supports get_by_id for %, @, $ ids
     obj = server.get_by_id(pane_id)  # e.g., "%7"
-    assert isinstance(obj, Pane)
+    if not isinstance(obj, Pane):
+        raise RuntimeError(f"tmux pane not found: {pane_id}")
     mp = ManagedPane.from_existing(obj, init_regex=init_regex)
     mp.pane_id = pane_id  # for your logger field
     return mp
